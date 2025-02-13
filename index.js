@@ -24,17 +24,19 @@ const log = (...msg) => {
 
 /**
      @param {String} prompt The full prompt string after it is combined
-     @returns {String|void} The same prompt but with the mathcros replaced
+     @returns {String} The same prompt but with the mathcros replaced
 */
 function sumVar(prompt) {
-     if (!extensionSettings.enabled) return;
+     if (!extensionSettings.enabled) return prompt;
 
      const regex = /{{sumvar::\w+( \w+)*(::-{0,1}\d+(\.\d+)?){0,1}}}/gi;
      const matches = prompt.match(regex);
      const results = [];
 
-     if (!matches || matches.length === 0)
-          return log("No match found for {{sumvar}}");
+     if (!matches || matches.length === 0) {
+         log("No match found for {{sumvar}}");
+         return prompt;
+     }
 
      for (let i = 0; i < matches.length; i++) {
           const values = matches[i]
@@ -89,6 +91,7 @@ function runMacros(prompt) {
 }
 
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
+     if (!extensionSettings.enabled) return;
      log(event_types.GENERATE_AFTER_COMBINE_PROMPTS, arg);
      arg.prompt = runMacros(arg.prompt);
 })
