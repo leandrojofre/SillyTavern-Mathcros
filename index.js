@@ -32,7 +32,6 @@ function sumVar(prompt) {
      const regex = /{{sumvar::\w+( \w+)*(::-{0,1}\d+(\.\d+)?){0,1}}}/gi;
      const matches = prompt.match(regex);
      const results = [];
-     log(prompt, regex, matches)
 
      if (!matches || matches.length === 0)
           return log("No match found for {{sumvar}}");
@@ -66,13 +65,22 @@ function sumVar(prompt) {
           results.push(result);
           log(`sumVar -- ${values[0]} + ${increment} = `, result);
      }
+
+     for (let i = 0; i < matches.length; i++) {
+          const match = matches[i];
+          const result = results[i];
+          prompt = prompt.replace(match, result);
+     }
+
+     return prompt
 }
 
+/** List of macros to apply */
 const macros = {
-     sumvar: (prompt) => sumVar(prompt)
+     sumvar: (prompt) => { return sumVar(prompt) }
 };
 
-
+/** This will apply all the macros to the prompt. */
 function runMacros(prompt) {
      for (const key in macros)
           prompt = macros[key](prompt);
@@ -82,7 +90,7 @@ function runMacros(prompt) {
 
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
      log(event_types.GENERATE_AFTER_COMBINE_PROMPTS, arg);
-     runMacros(arg.prompt);
+     arg.prompt = runMacros(arg.prompt);
 })
 
 // * Methods in charge of controlling the extension settings
