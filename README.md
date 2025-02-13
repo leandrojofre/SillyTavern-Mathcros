@@ -1,5 +1,4 @@
-# SillyTavern Extension Example
-
+# SillyTavern - Mathcros
 This is a simple extension that adds macros that allow you to perform simple mathematical operations with variables, addition, subtraction, multiplication and division.
 
 ## Features
