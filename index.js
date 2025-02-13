@@ -1,5 +1,6 @@
 import {extension_settings} from "../../../extensions.js";
-import {saveSettingsDebounced} from "../../../../script.js";
+import {saveSettingsDebounced, event_types, eventSource} from "../../../../script.js";
+import {getLocalVariable, getGlobalVariable} from "../../../variables.js";
 
 // * Extension variables
 
@@ -15,13 +16,74 @@ const context = SillyTavern.getContext();
 // * Debugs methods
 
 const log = (...msg) => {
-	if (!extensionSettings.debug) return;
+	if (!extensionSettings.enabled || !extensionSettings.debug) return;
 	console.log("[" + extensionName + "]", ...msg);
 };
 
 // * Extension methods
 
+/**
+     @param {String} prompt The full prompt string after it is combined
+     @returns {String|void} The same prompt but with the mathcros replaced
+*/
+function sumVar(prompt) {
+     if (!extensionSettings.enabled) return;
 
+     const regex = /{{sumvar::\w+( \w+)*(::-{0,1}\d+(\.\d+)?){0,1}}}/gi;
+     const matches = prompt.match(regex);
+     const results = [];
+     log(prompt, regex, matches)
+
+     if (!matches || matches.length === 0)
+          return log("No match found for {{sumvar}}");
+
+     for (let i = 0; i < matches.length; i++) {
+          const values = matches[i]
+          .replace(/{{|}}|sumvar::/g, "")
+          .split(/::/g);
+
+          const vars = values[0]
+          .split(/ /g)
+          .map((val) => {
+               const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
+
+               try {
+                    const parsedValue = JSON.parse(variable);
+                    if (Array.isArray(parsedValue))
+                         return parsedValue
+                         .filter((value) => !isNaN(Number(value)))
+                         .reduce((acu, value) => acu + Number(value), 0);
+               } catch {
+                    // Nothing to do...
+               }
+
+               return isNaN(Number(variable)) ? 0 : Number(variable);
+          })
+          .reduce((acu, val) => acu + val, 0);
+
+          const increment = Number(values[1] ?? "0");
+          const result = vars + increment;
+          results.push(result);
+          log(`sumVar -- ${values[0]} + ${increment} = `, result);
+     }
+}
+
+const macros = {
+     sumvar: (prompt) => sumVar(prompt)
+};
+
+
+function runMacros(prompt) {
+     for (const key in macros)
+          prompt = macros[key](prompt);
+
+     return prompt;
+}
+
+eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
+     log(event_types.GENERATE_AFTER_COMBINE_PROMPTS, arg);
+     runMacros(arg.prompt);
+})
 
 // * Methods in charge of controlling the extension settings
 
@@ -81,13 +143,13 @@ function setSettings() {
 (async function initExtension() {
 
 	if (!context.extensionSettings[extensionName]) {
-	    context.extensionSettings[extensionName] = structuredClone(defaultSettings);
+		context.extensionSettings[extensionName] = structuredClone(defaultSettings);
 	}
 
 	for (const key of Object.keys(defaultSettings)) {
-	    if (context.extensionSettings[extensionName][key] === undefined) {
-		   context.extensionSettings[extensionName][key] = defaultSettings[key];
-	    }
+		if (context.extensionSettings[extensionName][key] === undefined) {
+			context.extensionSettings[extensionName][key] = defaultSettings[key];
+		}
 	}
 
 	await loadHTMLSettings();
