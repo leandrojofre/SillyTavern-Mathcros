@@ -1,33 +1,19 @@
 # SillyTavern Extension Example
 
-*Provide a brief description of how your extension works, what problem it aims to solve.*
+This is a simple extension that adds macros that allow you to perform simple mathematical operations with variables, addition, subtraction, multiplication and division.
 
 ## Features
 
-*Describe some of the main selling points of your extension.*
+- ```{{sumvar::var_name0::number}} | {{sumvar::var_name0}}``` *var_nam* is replaced by the name of the variable to which you want to add a number, you can put one or several names, as long as they are separated by a blank space. Variables can be arrays, strings of numbers, and numbers (arrays within arrays will be ignored). ```var_name0 var_name1``` *number* can be any positive or negative number, even with a dot ```-1 0 1 2.5``` It must be a single number. The number is optional, you can just add variables without any problems.
 
-## Installation and Usage
+## Installation
 
-### Installation
-
-*In most cases, this should just be using ST's inbuilt extension installer.* 
+Install the extension using this link: ```https://github.com/leandrojofre/SillyTavern-Mathcros.git```
 
 ### Usage
 
-*Explain how to use this extension.*
-
-## Prerequisites
-
-*Specify the version of ST necessary here.*
+This extension is intended to be used on any text box that ends inside the prompt. The macro will only be replaced after ST combines the prompt, event_type: ```GENERATE_AFTER_COMBINE_PROMPTS```
 
 ## Support and Contributions
 
-*Where should someone ask for support?*
-
-*Consider including your own contact info for help/questions.*
-
-*How can people help add to this extension?*
-
-## License
-
-*Be cool, use an open source license.*
+Thanks to city-unit for the [extension template](https://github.com/city-unit/st-extension-example/).
