@@ -11,7 +11,10 @@ const defaultSettings = {
     enabled: true,
     debug: false
 };
+
 const context = SillyTavern.getContext();
+const regexSum = /{{sumvar::(\w+|-{0,1}\d+(\.\d+){0,1})( (\w+|-{0,1}\d+(\.\d+){0,1}))*}}/g;
+const regexMul = /{{mulvar::(\w+|-{0,1}\d+(\.\d+){0,1})( (\w+|-{0,1}\d+(\.\d+){0,1}))*}}/g;
 
 // * Debugs methods
 
@@ -23,64 +26,116 @@ const log = (...msg) => {
 // * Extension methods
 
 /**
-     @param {String} prompt The full prompt string after it is combined
+    @param {String} prompt Raw prompt string
+    @param {Array} matches All the raw mathcros matches
+    @param {Array} results Results of doing the macro math
+    @returns {String} Prompt with mathcros replaced
+*/
+function replacePrompt(prompt, matches, results) {
+    for (let i = 0; i < matches.length; i++) {
+        const match = matches[i];
+        const result = results[i];
+        prompt = prompt.replace(match, String(result));
+    }
+
+    return prompt;
+}
+
+/**
+    @param {String} prompt Raw prompt after it is combined
     @returns {String} The same prompt but with the mathcros replaced
 */
 function sumVar(prompt) {
     if (!extensionSettings.enabled) return prompt;
 
-    const regex = /{{sumvar::\w+( \w+)*(::-{0,1}\d+(\.\d+)?){0,1}}}/gi;
-    const matches = prompt.match(regex);
+    const matches = prompt.match(regexSum);
     const results = [];
 
-    if (!matches || matches.length === 0) {
-        log("No match found for {{sumvar}}");
-        return prompt;
-    }
+    for (const match of matches) {
+        const values = match
+        .replace(/{{|}}|sumvar::/g, "");
 
-    for (let i = 0; i < matches.length; i++) {
-        const values = matches[i]
-        .replace(/{{|}}|sumvar::/g, "")
-        .split(/::/g);
-
-        const vars = values[0]
+        const result = values
         .split(/ /g)
         .map((val) => {
+            const isValNan = isNaN(Number(val));
+            if (!isValNan) return Number(val);
+
             const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
+            const isVarNaN = isNaN(Number(variable));
+            const isVarEmpty = variable.trim() === "";
+
+            if (isVarEmpty) return 0;
 
             try {
-                    const parsedValue = JSON.parse(variable);
-                    if (Array.isArray(parsedValue))
-                        return parsedValue
-                        .filter((value) => !isNaN(Number(value)))
-                        .reduce((acu, value) => acu + Number(value), 0);
+                const parsedValue = JSON.parse(variable);
+                if (Array.isArray(parsedValue))
+                    return parsedValue
+                    .filter((value) => !isNaN(Number(value)))
+                    .reduce((acu, value) => acu + Number(value), 0);
             } catch {
-                    // Nothing to do...
+                // Nothing to do...
             }
 
-            return isNaN(Number(variable)) ? 0 : Number(variable);
+            if (isVarNaN) return 0;
+            return Number(variable);
         })
         .reduce((acu, val) => acu + val, 0);
 
-        const increment = Number(values[1] ?? "0");
-        const result = vars + increment;
         results.push(result);
-        log(`sumVar -- ${values[0]} + ${increment} = `, result);
+        log(`sumVar -- ${match} = `, result);
     }
 
-    for (let i = 0; i < matches.length; i++) {
-        const match = matches[i];
-        const result = results[i];
-        prompt = prompt.replace(match, result);
-    }
-
-    return prompt
+    return replacePrompt(prompt, matches, results);
 }
 
-/** List of macros to apply */
-const macros = {
-    sumvar: (prompt) => { return sumVar(prompt) }
-};
+/**
+    @param {String} prompt Raw prompt after it is combined
+    @returns {String} The same prompt but with the mathcros replaced
+*/
+function mulVar(prompt) {
+    if (!extensionSettings.enabled) return prompt;
+
+    const matches = prompt.match(regexMul);
+    const results = [];
+
+    for (const match of matches) {
+        const values = match
+        .replace(/{{|}}|mulvar::/g, "");
+
+        const result = values
+        .split(/ /g)
+        .map((val) => {
+            const isValNan = isNaN(Number(val));
+            if (!isValNan) return Number(val);
+
+            const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
+            const isVarNaN = isNaN(Number(variable));
+            const isVarEmpty = variable.trim() === "";
+
+            if (isVarEmpty) return 1;
+
+            try {
+                const parsedValue = JSON.parse(variable);
+                if (Array.isArray(parsedValue))
+                    return parsedValue
+                    .filter((value) => !isNaN(Number(value)))
+                    .reduce((acu, value) => acu * Number(value), 1);
+            } catch {
+                // Nothing to do...
+            }
+
+            if (isVarNaN) return 1;
+            return Number(variable);
+        })
+        .reduce((acu, val) => acu * val, 1);
+
+        results.push(result);
+        log(`mulVar -- ${match} = `, result);
+    }
+
+    return replacePrompt(prompt, matches, results);
+}
 
 /** This will apply all the macros to the prompt.
     @param {String} prompt Raw prompt
