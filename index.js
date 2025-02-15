@@ -82,10 +82,15 @@ const macros = {
     sumvar: (prompt) => { return sumVar(prompt) }
 };
 
-/** This will apply all the macros to the prompt. */
+/** This will apply all the macros to the prompt.
+    @param {String} prompt Raw prompt
+*/
 function runMacros(prompt) {
-    for (const key in macros)
-        prompt = macros[key](prompt);
+    let match;
+    while (match = prompt.match(/{{(sumvar|mulvar)::(\w+|-{0,1}\d+(\.\d+){0,1})( (\w+|-{0,1}\d+(\.\d+){0,1}))*}}/g), match) {
+        if (match[0].includes("sumvar")) prompt = sumVar(prompt);
+        if (match[0].includes("mulvar")) prompt = mulVar(prompt);
+    }
 
     return prompt;
 }
