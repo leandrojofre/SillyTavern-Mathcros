@@ -1,11 +1,18 @@
 # SillyTavern - Mathcros
 This is a simple extension that adds a macro that allows you to perform additions and subtractions between variables and numbers without modifying the variables.
 ## Features
-- ```{{sumvar::var_name0::number}} | {{sumvar::var_name0}}``` ***var_name*** is replaced by the name of the variable to which you want to add a number, you can put one or several names, as long as they are separated by a blank space. Variables can be arrays, strings of numbers, and numbers, both positive or negative (arrays within arrays will be ignored). ```var_name0 var_name1``` ***number*** can be any positive or negative number, even with a dot. It must be a single number. The number is optional, you can just add variables without any problems. ```-1 0 1 2.5``` Non-numeric values will be replaced by zero.
-<image width="100%" src="https://github.com/user-attachments/assets/94f804b9-52b0-42aa-a5a4-b45a4c2e2dee"/>
+- ```{{sumvar::var_name0 number}} | {{sumvar::var_name0}}``` It will sum all numbers and numeric variables declared inside the curly braces.
+- ```{{mulvar::var_name0 number}} | {{mulvar::var_name0}}``` It will calculate the product of multiplying all numbers and numeric variables declared inside the curly braces.
+  
+> ***var_name*** is replaced by the name of a global or local ST variable, you can put one or several names, as long as they are separated by a blank space. Variables can be arrays, strings of numbers, and numbers, both positive or negative (arrays within arrays will be ignored). ```var_name0 var_name1```
+
+> ***number*** can be any positive or negative number, even with a dot. It must be a single number. ```-1 0 1 2.5```
+
+**Non-numeric values will be replaced by zero.**
+
+<image width="100%" src="https://github.com/user-attachments/assets/25db70d8-71a9-40bc-b047-5d8d37c6812f"/>
 
 ### Coming Soon
-- Multiplications
 - Divisions
 - Maybe modules
 > I don't have a date to add those features, I just made the extension because I needed the addition and subtraction.
@@ -16,4 +23,5 @@ This extension is intended to be used on any text box that ends inside the promp
 ### Compatibility
 Tested: The extension supports lorebooks, databanks, character cards and writing in chat (not replaced visually, only in the prompt).
 ## Support and Contributions
-Thanks to city-unit for the [extension template](https://github.com/city-unit/st-extension-example/).
+- Thanks to city-unit for the [extension template](https://github.com/city-unit/st-extension-example/).
+- Thanks to lenanderson, I had to watch [Len's extensions](https://lenanderson.github.io/SillyTavern/) in order to figure out how to handle some things in mine.
