@@ -23,5 +23,5 @@ This extension is intended to be used on any text box that ends inside the promp
 ### Compatibility
 Tested: The extension supports lorebooks, databanks, character cards and writing in chat (not replaced visually, only in the prompt).
 ## Support and Contributions
-Thanks to city-unit for the [extension template](https://github.com/city-unit/st-extension-example/).
-Thanks to lenanderson, I had to watch [Len's extensions](https://lenanderson.github.io/SillyTavern/) in order to figure out how to handle some things in mine.
+- Thanks to city-unit for the [extension template](https://github.com/city-unit/st-extension-example/).
+- Thanks to lenanderson, I had to watch [Len's extensions](https://lenanderson.github.io/SillyTavern/) in order to figure out how to handle some things in mine.
