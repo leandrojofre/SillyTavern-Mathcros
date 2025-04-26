@@ -20,7 +20,7 @@ This is a simple extension that adds a macro that allows you to perform addition
 ## Installation
 Install the extension using this link: ```https://github.com/leandrojofre/SillyTavern-Mathcros.git```
 ### Usage
-This extension is intended to be used on any text box that ends inside the prompt. The macro will only be replaced after ST combines the prompt, event_type: ```GENERATE_AFTER_COMBINE_PROMPTS```
+This extension is intended to be used on any text box that ends inside the prompt. In TC, the macro will only be replaced after ST combines the prompt, event_type: `GENERATE_AFTER_COMBINE_PROMPTS`, or before ST sends the raw prompt to the CC backend, event_type: `GENERATE_AFTER_DATA`.
 ### Compatibility
 Tested: The extension supports lorebooks, databanks, character cards and writing in chat (not replaced visually, only in the prompt).
 ## Support and Contributions
