@@ -13,8 +13,8 @@ const defaultSettings = {
 };
 
 const context = SillyTavern.getContext();
-const regexSum = /{{sumvar::(\w+|-{0,1}\d+(\.\d+){0,1})( (\w+|-{0,1}\d+(\.\d+){0,1}))*}}/g;
-const regexMul = /{{mulvar::(\w+|-{0,1}\d+(\.\d+){0,1})( (\w+|-{0,1}\d+(\.\d+){0,1}))*}}/g;
+const regexSum = /{{sumvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
+const regexMul = /{{mulvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 
 // * Debugs methods
 
@@ -58,8 +58,12 @@ function sumVar(prompt) {
         const result = values
         .split(/ /g)
         .map((val) => {
-            const isValNan = isNaN(Number(val));
-            if (!isValNan) return Number(val);
+            const isValNaN = isNaN(Number(val));
+            if (!isValNaN) return Number(val);
+
+            const negative = val[0].includes("-") ? -1 : 1;
+
+            if (negative === -1) val = val.slice(1);
 
             const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
             const isVarNaN = isNaN(Number(variable));
@@ -69,16 +73,18 @@ function sumVar(prompt) {
 
             try {
                 const parsedValue = JSON.parse(variable);
-                if (Array.isArray(parsedValue))
-                    return parsedValue
+                if (Array.isArray(parsedValue)) {
+                    const finalValue = parsedValue
                     .filter((value) => !isNaN(Number(value)))
                     .reduce((acu, value) => acu + Number(value), 0);
+                    return finalValue * negative;
+                }
             } catch {
                 // Nothing to do...
             }
 
             if (isVarNaN) return 0;
-            return Number(variable);
+            return Number(variable) * negative;
         })
         .reduce((acu, val) => acu + val, 0);
 
@@ -106,8 +112,12 @@ function mulVar(prompt) {
         const result = values
         .split(/ /g)
         .map((val) => {
-            const isValNan = isNaN(Number(val));
-            if (!isValNan) return Number(val);
+            const isValNaN = isNaN(Number(val));
+            if (!isValNaN) return Number(val);
+
+            const negative = val[0].includes("-") ? -1 : 1;
+
+            if (negative === -1) val = val.slice(1);
 
             const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
             const isVarNaN = isNaN(Number(variable));
@@ -117,16 +127,18 @@ function mulVar(prompt) {
 
             try {
                 const parsedValue = JSON.parse(variable);
-                if (Array.isArray(parsedValue))
-                    return parsedValue
+                if (Array.isArray(parsedValue)) {
+                    const finalValue = parsedValue
                     .filter((value) => !isNaN(Number(value)))
                     .reduce((acu, value) => acu * Number(value), 1);
+                    return finalValue * negative;
+                }
             } catch {
                 // Nothing to do...
             }
 
             if (isVarNaN) return 1;
-            return Number(variable);
+            return Number(variable) * negative;
         })
         .reduce((acu, val) => acu * val, 1);
 
