@@ -36,163 +36,257 @@ const extensionName = "SillyTavern-Mathcros";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 const extensionSettings = extension_settings[extensionName];
 const defaultSettings = {
-	enabled: true,
-	debug: false
+    enabled: true,
+    debug: false
 };
+
 const context = SillyTavern.getContext();
+const regexSum = /{{sumvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
+const regexMul = /{{mulvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 
 // * Debugs methods
 
 const log = (...msg) => {
-	if (!extensionSettings.enabled || !extensionSettings.debug) return;
-	console.log("[" + extensionName + "]", ...msg);
+    if (!extensionSettings.enabled || !extensionSettings.debug) return;
+    console.log("[" + extensionName + "]", ...msg);
 };
 
 // * Extension methods
 
 /**
-     @param {String} prompt The full prompt string after it is combined
-     @returns {String} The same prompt but with the mathcros replaced
+    @param {String} prompt Raw prompt string
+    @param {Array} matches All the raw mathcros matches
+    @param {Array} results Results of doing the macro math
+    @returns {String} Prompt with mathcros replaced
+*/
+function replacePrompt(prompt, matches, results) {
+    for (let i = 0; i &lt; matches.length; i++) {
+        const match = matches[i];
+        const result = results[i];
+        prompt = prompt.replace(match, String(result));
+    }
+
+    return prompt;
+}
+
+/**
+    @param {String} prompt Raw prompt after it is combined
+    @returns {String} The same prompt but with the mathcros replaced
 */
 function sumVar(prompt) {
-     if (!extensionSettings.enabled) return prompt;
+    if (!extensionSettings.enabled) return prompt;
 
-     const regex = /{{sumvar::\w+( \w+)*(::-{0,1}\d+(\.\d+)?){0,1}}}/gi;
-     const matches = prompt.match(regex);
-     const results = [];
+    const matches = prompt.match(regexSum);
+    const results = [];
 
-     if (!matches || matches.length === 0) {
-         log("No match found for {{sumvar}}");
-         return prompt;
-     }
+    for (const match of matches) {
+        const values = match
+        .replace(/{{|}}|sumvar::/g, "");
 
-     for (let i = 0; i &lt; matches.length; i++) {
-          const values = matches[i]
-          .replace(/{{|}}|sumvar::/g, "")
-          .split(/::/g);
+        const result = values
+        .split(/ /g)
+        .map((val) => {
+            const isValNaN = isNaN(Number(val));
+            if (!isValNaN) return Number(val);
 
-          const vars = values[0]
-          .split(/ /g)
-          .map((val) => {
-               const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
+            const negative = val[0].includes("-") ? -1 : 1;
 
-               try {
-                    const parsedValue = JSON.parse(variable);
-                    if (Array.isArray(parsedValue))
-                         return parsedValue
-                         .filter((value) => !isNaN(Number(value)))
-                         .reduce((acu, value) => acu + Number(value), 0);
-               } catch {
-                    // Nothing to do...
-               }
+            if (negative === -1) val = val.slice(1);
 
-               return isNaN(Number(variable)) ? 0 : Number(variable);
-          })
-          .reduce((acu, val) => acu + val, 0);
+            const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
+            const isVarNaN = isNaN(Number(variable));
+            const isVarEmpty = variable.trim() === "";
 
-          const increment = Number(values[1] ?? "0");
-          const result = vars + increment;
-          results.push(result);
-          log(`sumVar -- ${values[0]} + ${increment} = `, result);
-     }
+            if (isVarEmpty) return 0;
 
-     for (let i = 0; i &lt; matches.length; i++) {
-          const match = matches[i];
-          const result = results[i];
-          prompt = prompt.replace(match, result);
-     }
+            try {
+                const parsedValue = JSON.parse(variable);
+                if (Array.isArray(parsedValue)) {
+                    const finalValue = parsedValue
+                    .filter((value) => !isNaN(Number(value)))
+                    .reduce((acu, value) => acu + Number(value), 0);
+                    return finalValue * negative;
+                }
+            } catch {
+                // Nothing to do...
+            }
 
-     return prompt
+            if (isVarNaN) return 0;
+            return Number(variable) * negative;
+        })
+        .reduce((acu, val) => acu + val, 0);
+
+        results.push(result);
+        log(`sumVar -- ${match} = `, result);
+    }
+
+    return replacePrompt(prompt, matches, results);
 }
 
-/** List of macros to apply */
-const macros = {
-     sumvar: (prompt) => { return sumVar(prompt) }
-};
+/**
+    @param {String} prompt Raw prompt after it is combined
+    @returns {String} The same prompt but with the mathcros replaced
+*/
+function mulVar(prompt) {
+    if (!extensionSettings.enabled) return prompt;
 
-/** This will apply all the macros to the prompt. */
+    const matches = prompt.match(regexMul);
+    const results = [];
+
+    for (const match of matches) {
+        const values = match
+        .replace(/{{|}}|mulvar::/g, "");
+
+        const result = values
+        .split(/ /g)
+        .map((val) => {
+            const isValNaN = isNaN(Number(val));
+            if (!isValNaN) return Number(val);
+
+            const negative = val[0].includes("-") ? -1 : 1;
+
+            if (negative === -1) val = val.slice(1);
+
+            const variable = String(getLocalVariable(val) === '' ? getGlobalVariable(val) : getLocalVariable(val));
+            const isVarNaN = isNaN(Number(variable));
+            const isVarEmpty = variable.trim() === "";
+
+            if (isVarEmpty) return 1;
+
+            try {
+                const parsedValue = JSON.parse(variable);
+                if (Array.isArray(parsedValue)) {
+                    const finalValue = parsedValue
+                    .filter((value) => !isNaN(Number(value)))
+                    .reduce((acu, value) => acu * Number(value), 1);
+                    return finalValue * negative;
+                }
+            } catch {
+                // Nothing to do...
+            }
+
+            if (isVarNaN) return 1;
+            return Number(variable) * negative;
+        })
+        .reduce((acu, val) => acu * val, 1);
+
+        results.push(result);
+        log(`mulVar -- ${match} = `, result);
+    }
+
+    return replacePrompt(prompt, matches, results);
+}
+
+/** This will apply all the macros to the prompt.
+    @param {String} prompt Raw prompt
+*/
 function runMacros(prompt) {
-     for (const key in macros)
-          prompt = macros[key](prompt);
+    let match;
+    while (match = prompt.match(/{{(sumvar|mulvar)::(\w+|-{0,1}\d+(\.\d+){0,1})( (\w+|-{0,1}\d+(\.\d+){0,1}))*}}/g), match) {
+        if (match[0].includes("sumvar")) prompt = sumVar(prompt);
+        if (match[0].includes("mulvar")) prompt = mulVar(prompt);
+    }
 
-     return prompt;
+    return prompt;
 }
 
+/** This is made for the prompt generated by ST when models don't handle the prompt by themselves - mostly TC. Tested compatibility:
+    - InfermaticAI (TC)
+    - AI Horde
+*/
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
-     if (!extensionSettings.enabled) return;
-     log(event_types.GENERATE_AFTER_COMBINE_PROMPTS, arg);
-     arg.prompt = runMacros(arg.prompt);
-})
+    if (!extensionSettings.enabled) return;
+
+    log(event_types.GENERATE_AFTER_COMBINE_PROMPTS, arg);
+
+    arg.prompt = runMacros(arg.prompt);
+});
+
+/** This is made for OAI based models or models that handle their own prompt - mostly CC. Tested compatibility:
+    - Google AI Studio
+    - Openrouter (CC)
+*/
+eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
+    if (!extensionSettings.enabled) return;
+
+    log(event_types.GENERATE_AFTER_DATA, arg);
+
+    if (Array.isArray(arg.prompt)) {
+        for (const item of arg.prompt)
+            item.content = runMacros(item.content);
+    } else
+        arg.prompt = runMacros(arg.prompt);
+});
 
 // * Methods in charge of controlling the extension settings
 
 const settingsCallbacks = {
-	/**	Enables/Disables the extension */
-	enabled: () => {
-		// Nothing by the moment
-	}
+    /**	Enables/Disables the extension */
+    enabled: () => {
+        // Nothing by the moment
+    }
 }
 
 /** Changes a setting value and triggers a callback if there's any on settingsCallbacks. */
 function settingsBooleanButton(event) {
-	const target = event.target;
-	const value = Boolean($(target).prop("checked"));
-	const setting = target.getAttribute("mathcros-setting");
-	const callback = settingsCallbacks[setting];
+    const target = event.target;
+    const value = Boolean($(target).prop("checked"));
+    const setting = target.getAttribute("mathcros-setting");
+    const callback = settingsCallbacks[setting];
 
-	extensionSettings[setting] = value;
+    extensionSettings[setting] = value;
 
-	if (callback) callback();
+    if (callback) callback();
 
-	log("toggleSetting " + setting, value);
-	saveSettingsDebounced();
+    log("toggleSetting " + setting, value);
+    saveSettingsDebounced();
 }
 
 /**	Logs setting's values. */
 function displaySettings() {
-	console.debug("[" + extensionName + "]", `The extension is ${extensionSettings.enabled ? "active" : "not active"}`);
-	console.debug("[" + extensionName + "]", `Debug mode is ${extensionSettings.debug ? "active" : "not active"}`);
-	console.debug("[" + extensionName + "]", structuredClone(extensionSettings));
+    console.debug("[" + extensionName + "]", `The extension is ${extensionSettings.enabled ? "active" : "not active"}`);
+    console.debug("[" + extensionName + "]", `Debug mode is ${extensionSettings.debug ? "active" : "not active"}`);
+    console.debug("[" + extensionName + "]", structuredClone(extensionSettings));
 }
 
 /** Append settings menu on ST and set listeners. */
 async function loadHTMLSettings() {
-	const settingsHtml = await $.get(`${extensionFolderPath}/settings.html`);
+    const settingsHtml = await $.get(`${extensionFolderPath}/settings.html`);
 
-	$("#extensions_settings").append(settingsHtml);
+    $("#extensions_settings").append(settingsHtml);
 
-	// Event Listeners for the extension HTML
-	$("#mathcros-check-configuration").on("click", displaySettings);
-	$("#mathcros-activate-debug").on("input", settingsBooleanButton);
-	$("#mathcros-activate-extension").on("input", settingsBooleanButton);
+    // Event Listeners for the extension HTML
+    $("#mathcros-check-configuration").on("click", displaySettings);
+    $("#mathcros-activate-debug").on("input", settingsBooleanButton);
+    $("#mathcros-activate-extension").on("input", settingsBooleanButton);
 
-	log("loadHTMLSettings");
+    log("loadHTMLSettings");
 }
 
 /** Init setting values on the menu */
 function setSettings() {
-	$("#mathcros-activate-extension").prop("checked", extensionSettings.enabled).trigger("input");
-	$("#mathcros-activate-debug").prop("checked", extensionSettings.debug).trigger("input");
+    $("#mathcros-activate-extension").prop("checked", extensionSettings.enabled).trigger("input");
+    $("#mathcros-activate-debug").prop("checked", extensionSettings.debug).trigger("input");
 
-	log("setSettings", extensionSettings);
+    log("setSettings", extensionSettings);
 }
 
 // * Initialize Extension
 
 (async function initExtension() {
 
-	if (!context.extensionSettings[extensionName]) {
-		context.extensionSettings[extensionName] = structuredClone(defaultSettings);
-	}
+    if (!context.extensionSettings[extensionName]) {
+        context.extensionSettings[extensionName] = structuredClone(defaultSettings);
+    }
 
-	for (const key of Object.keys(defaultSettings)) {
-		if (context.extensionSettings[extensionName][key] === undefined) {
-			context.extensionSettings[extensionName][key] = defaultSettings[key];
-		}
-	}
+    for (const key of Object.keys(defaultSettings)) {
+        if (context.extensionSettings[extensionName][key] === undefined) {
+            context.extensionSettings[extensionName][key] = defaultSettings[key];
+        }
+    }
 
-	await loadHTMLSettings();
-	setSettings();
+    await loadHTMLSettings();
+    setSettings();
 })();
 </code></pre>
         </article>
@@ -204,13 +298,13 @@ function setSettings() {
 </div>
 
 <nav>
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#displaySettings">displaySettings</a></li><li><a href="global.html#loadHTMLSettings">loadHTMLSettings</a></li><li><a href="global.html#macros">macros</a></li><li><a href="global.html#runMacros">runMacros</a></li><li><a href="global.html#setSettings">setSettings</a></li><li><a href="global.html#settingsBooleanButton">settingsBooleanButton</a></li><li><a href="global.html#sumVar">sumVar</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#displaySettings">displaySettings</a></li><li><a href="global.html#loadHTMLSettings">loadHTMLSettings</a></li><li><a href="global.html#mulVar">mulVar</a></li><li><a href="global.html#replacePrompt">replacePrompt</a></li><li><a href="global.html#runMacros">runMacros</a></li><li><a href="global.html#setSettings">setSettings</a></li><li><a href="global.html#settingsBooleanButton">settingsBooleanButton</a></li><li><a href="global.html#sumVar">sumVar</a></li></ul>
 </nav>
 
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Thu Feb 13 2025 22:43:34 GMT-0300 (GMT-03:00)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat Apr 26 2025 18:28:52 GMT-0300 (GMT-03:00)
 </footer>
 
 <script> prettyPrint(); </script>
