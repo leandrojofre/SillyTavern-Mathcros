@@ -154,7 +154,8 @@ function mulVar(prompt) {
 */
 function runMacros(prompt) {
     let match;
-    while (match = prompt.match(/{{(sumvar|mulvar)::(\w+|-{0,1}\d+(\.\d+){0,1})( (\w+|-{0,1}\d+(\.\d+){0,1}))*}}/g), match) {
+    
+    while (match = [...prompt.match(regexSum) ?? [], ...prompt.match(regexMul) ?? []], match?.length) {
         if (match[0].includes("sumvar")) prompt = sumVar(prompt);
         if (match[0].includes("mulvar")) prompt = mulVar(prompt);
     }
