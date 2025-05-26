@@ -17,7 +17,7 @@ This is a simple extension that adds a macro that allows you to perform addition
 
 **MOD** ```{{modvar::var_name0 number}} | {{modvar::var_name0}}```
 - From left to right, it will apply the mod operation to all numbers and numeric variables declared inside the curly braces.
-- Non-numeric values will be ignored.
+- Non-numeric values and zero will be ignored.
 
 <image width="100%" src="https://github.com/user-attachments/assets/25db70d8-71a9-40bc-b047-5d8d37c6812f"/>
 
