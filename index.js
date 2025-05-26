@@ -198,11 +198,12 @@ function modVar(prompt) {
             if (isVarNaN) return "skip";
             if (Number(variable) === 0) return "skip";
             return Number(variable) * negative;
-        });
+        })
+        .filter((value) => value !== "skip");
 
         const result = preResult
         .slice(1)
-        .reduce((acu, val) => val === "skip" ? acu : acu % val, preResult[0]);
+        .reduce((acu, val) => acu % val, preResult[0]);
 
         results.push(result ?? "MODVAR EMPTY");
         log(`modVar -- ${match} = `, result);
