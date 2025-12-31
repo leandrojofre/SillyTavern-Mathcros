@@ -1,10 +1,31 @@
-import {extension_settings} from "../../../extensions.js";
-import {saveSettingsDebounced, event_types, eventSource} from "../../../../script.js";
-import {getLocalVariable, getGlobalVariable} from "../../../variables.js";
 import {MacroValueType} from "../../../macros/macro-system.js";
 import {math} from "./public/bundle.min.js";
 
 // * Extension variables
+
+const context = () => SillyTavern.getContext();
+
+const {
+    macros,
+    variables,
+    extensionSettings: extension_settings,
+    eventTypes: event_types,
+    eventSource,
+    saveSettingsDebounced
+} = context();
+
+const {
+    local: localVaraibles,
+    global: globalVariables
+} = variables;
+
+const {
+    get: getLocalVariable
+} = localVaraibles;
+
+const {
+    get: getGlobalVariable
+} = globalVariables;
 
 const extensionName = "SillyTavern-Mathcros";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
@@ -15,14 +36,9 @@ const defaultSettings = {
     debug: false
 };
 
-const context = () => SillyTavern.getContext();
 const regexSum = /{{sumvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 const regexMul = /{{mulvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 const regexMod = /{{modvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
-
-const {
-    macros
-} = context();
 
 // * MARK:Debugs methods
 
@@ -339,13 +355,24 @@ function loadExtensionMacros() {
     if (!extensionSettings.experimentalEngine) return;
 
     macros.register('math', {
+        description: 'Resolve mathematical operations using numbers and/or variables without modifying the value of the variable or using scripts.',
+        category: macros.category.UTILITY,
+        returnType: MacroValueType.NUMBER,
         unnamedArgs: [{
             name: 'operation',
             description: 'The mathematical operation to resolve',
             type: MacroValueType.STRING,
+            optional: false
+        }, {
+            name: 'precision',
+            description: 'Limits the max amount of decimal digits to show',
+            type: MacroValueType.INTEGER,
+            optional: true,
+            defaultValue: '0'
         }],
         handler: (macroContext) => {
-            const operationRaw = macroContext.args.join('');
+            const precision = Math.round(Number(macroContext.args[1] ?? 0));
+            const operationRaw = macroContext.args[0];
             const operation = operationRaw
                 .replaceAll(regexVarName, function (substring) {
                     const localVar = getLocalVariable(substring);
@@ -378,7 +405,11 @@ function loadExtensionMacros() {
                 return operationRaw;
             }
 
-            return mathEvaluation.value;
+            if (precision < 1) return Math.round(mathEvaluation.value);
+
+            return math
+                .format(mathEvaluation.value, { notation: 'fixed', precision: precision })
+                .replace(/\.?0+$/,'');
         },
     });
 }
