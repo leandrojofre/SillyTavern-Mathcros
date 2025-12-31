@@ -1,7 +1,7 @@
 import {MacroValueType} from "../../../macros/macro-system.js";
 import {math} from "./public/bundle.min.js";
 
-// * Extension variables
+// * MARK:Extension variables
 
 const context = () => SillyTavern.getContext();
 
@@ -283,6 +283,7 @@ eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
         arg.prompt = runMacros(arg.prompt);
 });
 
+// * MARK:New Macro Engine
 
 /**
  * @returns {null|number}
