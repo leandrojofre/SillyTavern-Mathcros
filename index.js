@@ -1,6 +1,8 @@
 import {extension_settings} from "../../../extensions.js";
 import {saveSettingsDebounced, event_types, eventSource} from "../../../../script.js";
 import {getLocalVariable, getGlobalVariable} from "../../../variables.js";
+import {MacroValueType} from "../../../macros/macro-system.js";
+import {math} from "./public/bundle.min.js";
 
 // * Extension variables
 
@@ -9,22 +11,27 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 const extensionSettings = extension_settings[extensionName];
 const defaultSettings = {
     enabled: true,
+    experimentalEngine: false,
     debug: false
 };
 
-const context = SillyTavern.getContext();
+const context = () => SillyTavern.getContext();
 const regexSum = /{{sumvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 const regexMul = /{{mulvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 const regexMod = /{{modvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 
-// * Debugs methods
+const {
+    macros
+} = context();
+
+// * MARK:Debugs methods
 
 const log = (...msg) => {
     if (!extensionSettings.enabled || !extensionSettings.debug) return;
     console.log("[" + extensionName + "]", ...msg);
 };
 
-// * Extension methods
+// * MARK:Extension methods
 
 /**
     @param {String} prompt - Raw prompt string
@@ -237,7 +244,7 @@ function runMacros(prompt) {
     - AI Horde
 */
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
-    if (!extensionSettings.enabled) return;
+    if (!extensionSettings.enabled || extensionSettings.experimentalEngine) return;
 
     log(event_types.GENERATE_AFTER_COMBINE_PROMPTS, arg);
 
@@ -249,7 +256,7 @@ eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
     - Openrouter (CC)
 */
 eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
-    if (!extensionSettings.enabled) return;
+    if (!extensionSettings.enabled || extensionSettings.experimentalEngine) return;
 
     log(event_types.GENERATE_AFTER_DATA, arg);
 
@@ -260,12 +267,132 @@ eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
         arg.prompt = runMacros(arg.prompt);
 });
 
-// * Methods in charge of controlling the extension settings
+
+/**
+ * @returns {null|number}
+ */
+function chooseNeutral(parent, child) {
+    if (!parent) return null;
+    const type = parent.type;
+
+    if (type === 'OperatorNode') {
+        const op = parent.op;
+        const args = parent.args || [];
+
+        if (op === '+') return 0;
+        if (op === '*') return 1;
+
+        if (op === '-') {
+            if (args[1] === child) return 0;
+            return null;
+        }
+
+        if (op === '/') {
+            if (args[1] === child) return 1;
+            return null;
+        }
+
+        if (op === '^') {
+            if (args[1] === child) return 1;
+            return null;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * @param {string} expr
+ * @param {Object} scope
+ * @returns {Object & {ok: boolean, value: number|Array}}
+ */
+function safeEvaluate(expr, scope = {}) {
+    const node = math.parse(expr);
+    const problems = [];
+
+    const transformed = node.transform(function (n, path, parent) {
+        if (n.isSymbolNode && n.name === 'INVALID') {
+            const neutral = chooseNeutral(parent, n);
+
+            if (neutral === null) {
+                problems.push({ node: n, parentType: parent ? parent.type : null, path });
+                return n;
+            }
+
+            return math.parse(String(neutral));
+        }
+
+        return n;
+    });
+
+    if (problems.length)
+        return { ok: false, problems };
+
+    const compiled = transformed.compile();
+    const value = compiled.evaluate(scope);
+    return { ok: true, value };
+}
+
+const regexVarName = /[a-zA-Z][\w]*[\w]/g;
+
+function loadExtensionMacros() {
+    if (!extensionSettings.experimentalEngine) return;
+
+    macros.register('math', {
+        unnamedArgs: [{
+            name: 'operation',
+            description: 'The mathematical operation to resolve',
+            type: MacroValueType.STRING,
+        }],
+        handler: (macroContext) => {
+            const operationRaw = macroContext.args.join('');
+            const operation = operationRaw
+                .replaceAll(regexVarName, function (substring) {
+                    const localVar = getLocalVariable(substring);
+                    const variable = String(localVar === '' ? getGlobalVariable(substring) : localVar);
+                    const isVarNaN = isNaN(Number(variable));
+                    const isVarEmpty = variable.trim() === "";
+
+                    if (isVarEmpty) return 'INVALID';
+
+                    try {
+                        const parsedValue = JSON.parse(variable);
+                        if (Array.isArray(parsedValue)) return 'INVALID';
+                    } catch {
+                        // Nothing to do, isVarNaN will nuke it...
+                    }
+
+                    if (isVarNaN) return 'INVALID';
+
+                    return variable;
+                })
+                .replaceAll(/\s/g, '');
+
+            log(macroContext);
+            log(operationRaw, operation);
+
+            const mathEvaluation = safeEvaluate(operation);
+
+            if (!mathEvaluation.ok) {
+                toastr.error('Mathcros: One of your math operations is using wrong syntax or a variable containing an invalid value');
+                return operationRaw;
+            }
+
+            return mathEvaluation.value;
+        },
+    });
+}
+
+// * MARK:Settings Controls
 
 const settingsCallbacks = {
     /**	Enables/Disables the extension */
     enabled: () => {
         // Nothing by the moment
+    },
+
+    experimentalEngine: () => {
+        toastr.warning(`Refresh the tab to ${extensionSettings.experimentalEngine ? 'use' : 'stop using'} the new engine`);
     }
 }
 
@@ -287,6 +414,7 @@ function settingsBooleanButton(event) {
 /**	Logs setting's values. */
 function displaySettings() {
     console.debug("[" + extensionName + "]", `The extension is ${extensionSettings.enabled ? "active" : "not active"}`);
+    console.debug("[" + extensionName + "]", `Experimental engine mode is ${extensionSettings.experimentalEngine ? "active" : "not active"}`);
     console.debug("[" + extensionName + "]", `Debug mode is ${extensionSettings.debug ? "active" : "not active"}`);
     console.debug("[" + extensionName + "]", structuredClone(extensionSettings));
 }
@@ -298,16 +426,18 @@ async function loadHTMLSettings() {
     $("#extensions_settings").append(settingsHtml);
 
     // Event Listeners for the extension HTML
-    $("#mathcros-check-configuration").on("click", displaySettings);
-    $("#mathcros-activate-debug").on("input", settingsBooleanButton);
     $("#mathcros-activate-extension").on("input", settingsBooleanButton);
-
+    $("#mathcros-experimetal-engine").on("input", settingsBooleanButton);
+    $("#mathcros-activate-debug").on("input", settingsBooleanButton);
+    
+    $("#mathcros-check-configuration").on("click", displaySettings);
     log("loadHTMLSettings");
 }
 
 /** Init setting values on the menu */
 function setSettings() {
     $("#mathcros-activate-extension").prop("checked", extensionSettings.enabled).trigger("input");
+    $("#mathcros-experimetal-engine").prop("checked", extensionSettings.experimentalEngine).trigger("input");
     $("#mathcros-activate-debug").prop("checked", extensionSettings.debug).trigger("input");
 
     log("setSettings", extensionSettings);
@@ -315,18 +445,19 @@ function setSettings() {
 
 // * Initialize Extension
 
-(async function initExtension() {
+$(async function () {
 
-    if (!context.extensionSettings[extensionName]) {
-        context.extensionSettings[extensionName] = structuredClone(defaultSettings);
+    if (!context().extensionSettings[extensionName]) {
+        context().extensionSettings[extensionName] = structuredClone(defaultSettings);
     }
 
     for (const key of Object.keys(defaultSettings)) {
-        if (context.extensionSettings[extensionName][key] === undefined) {
-            context.extensionSettings[extensionName][key] = defaultSettings[key];
+        if (context().extensionSettings[extensionName][key] === undefined) {
+            context().extensionSettings[extensionName][key] = defaultSettings[key];
         }
     }
 
     await loadHTMLSettings();
     setSettings();
-})();
+    loadExtensionMacros();
+});
