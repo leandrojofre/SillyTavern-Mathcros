@@ -6,7 +6,8 @@
     "js": "index.js",
     "css": "style.css",
     "author": "Leandro Jofre",
-    "version": "1.3.0",
+    "version": "2.0.0",
+    "minimum_client_version": "1.15.0",
     "homePage": "https://github.com/leandrojofre/SillyTavern-Mathcros.git",
     "auto_update": true
 }
