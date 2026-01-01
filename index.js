@@ -302,13 +302,8 @@ function chooseNeutral(parent, child) {
         const op = parent.op;
         const args = parent.args || [];
 
-        if (op === '+') return 0;
+        if (op === '+' || op === '-') return 0;
         if (op === '*') return 1;
-
-        if (op === '-') {
-            if (args[1] === child) return 0;
-            return null;
-        }
 
         if (op === '/') {
             if (args[1] === child) return 1;
