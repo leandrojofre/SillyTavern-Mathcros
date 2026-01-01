@@ -45,7 +45,12 @@ const regexMod = /{{modvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?))
 
 const log = (...msg) => {
     if (!extensionSettings.enabled || !extensionSettings.debug) return;
-    console.log("[" + extensionName + "]", ...msg);
+    console.log(`[${extensionName}-LOG]`, ...msg);
+};
+
+const error = (...msg) => {
+    if (!extensionSettings.enabled || !extensionSettings.debug) return;
+    console.error(`[${extensionName}-ERROR]`, ...msg);
 };
 
 // * MARK:Extension methods
@@ -328,23 +333,55 @@ function safeEvaluate(expr, scope = {}) {
     const node = math.parse(expr);
     const problems = [];
 
+    function tryNeutral(parent, n, path, reason) {
+        const neutral = chooseNeutral(parent, n);
+
+        if (neutral !== null) return math.parse(String(neutral));
+
+        problems.push({ node: n, reason, parentType: parent ? parent.type : null, path });
+        return null;
+    }
+
     const transformed = node.transform(function (n, path, parent) {
         if (n.isSymbolNode && n.name === 'INVALID') {
-            const neutral = chooseNeutral(parent, n);
+            const replaced = tryNeutral(parent, n, path, 'explicit INVALID');
+            return replaced ?? n;
+        }
 
-            if (neutral === null) {
-                problems.push({ node: n, parentType: parent ? parent.type : null, path });
-                return n;
+        if (n.isSymbolNode) {
+            const name = n.name;
+            const replaced = tryNeutral(parent, n, path, `missing_or_invalid_symbol:${name}`);
+            return replaced ?? n;
+        }
+
+        if (n.isConstantNode) {
+            const val = n.value;
+
+            if (typeof val === 'number' && !isNaN(val)) return n;
+
+            if (typeof val === 'string') {
+                const t = val.trim();
+
+                if (t !== '' && !isNaN(Number(t))) return math.parse(String(Number(t)));
+
+                const replaced = tryNeutral(parent, n, path, 'string_not_numeric');
+                return replaced ?? n;
             }
 
-            return math.parse(String(neutral));
+            const isBoolOrNull = typeof val === 'boolean' || val === null;
+            const replaced = tryNeutral(parent, n, path, isBoolOrNull ? 'boolean_or_null' : 'unsupported_constant');
+            return replaced ?? n;
+        }
+
+        if (n.isArrayNode || n.isObjectNode) {
+            const replaced = tryNeutral(parent, n, path, n.isArrayNode ? 'array_literal' : 'object_literal');
+            return replaced ?? n;
         }
 
         return n;
     });
 
-    if (problems.length)
-        return { ok: false, problems };
+    if (problems.length) return { ok: false, problems };
 
     const compiled = transformed.compile();
     const value = compiled.evaluate(scope);
@@ -380,7 +417,7 @@ function loadExtensionMacros() {
                     const localVar = getLocalVariable(substring);
                     const variable = String(localVar === '' ? getGlobalVariable(substring) : localVar);
                     const isVarNaN = isNaN(Number(variable));
-                    const isVarEmpty = variable.trim() === "";
+                    const isVarEmpty = variable.trim() === '';
 
                     if (isVarEmpty) return 'INVALID';
 
@@ -404,6 +441,7 @@ function loadExtensionMacros() {
 
             if (!mathEvaluation.ok) {
                 toastr.error('Mathcros: One of your math operations is using wrong syntax or a variable containing an invalid value');
+                error(mathEvaluation);
                 return operationRaw;
             }
 
