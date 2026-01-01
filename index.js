@@ -424,7 +424,10 @@ const settingsCallbacks = {
     },
 
     experimentalEngine: () => {
-        toastr.warning(`Refresh the tab to ${extensionSettings.experimentalEngine ? 'use' : 'stop using'} the new engine`);
+        const isMathRegistered = macros.registry.hasMacro('math');
+
+        if (extensionSettings.experimentalEngine && !isMathRegistered)
+            toastr.warning(`Refresh the tab to ${extensionSettings.experimentalEngine ? 'use' : 'stop using'} the new engine`);
     }
 }
 
@@ -490,6 +493,6 @@ $(async function () {
     }
 
     await loadHTMLSettings();
-    setSettings();
     loadExtensionMacros();
+    setSettings();
 });
