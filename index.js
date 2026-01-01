@@ -11,7 +11,8 @@ const {
     extensionSettings: extension_settings,
     eventTypes: event_types,
     eventSource,
-    saveSettingsDebounced
+    saveSettingsDebounced,
+    t
 } = context();
 
 const {
@@ -260,7 +261,7 @@ function runMacros(prompt) {
     - AI Horde
 */
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
-    if (!extensionSettings.enabled || extensionSettings.experimentalEngine) return;
+    if (!extensionSettings.enabled) return;
 
     log(event_types.GENERATE_AFTER_COMBINE_PROMPTS, arg);
 
@@ -272,7 +273,7 @@ eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, (arg) => {
     - Openrouter (CC)
 */
 eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
-    if (!extensionSettings.enabled || extensionSettings.experimentalEngine) return;
+    if (!extensionSettings.enabled) return;
 
     log(event_types.GENERATE_AFTER_DATA, arg);
 
@@ -427,7 +428,10 @@ const settingsCallbacks = {
         const isMathRegistered = macros.registry.hasMacro('math');
 
         if (extensionSettings.experimentalEngine && !isMathRegistered)
-            toastr.warning(`Refresh the tab to ${extensionSettings.experimentalEngine ? 'use' : 'stop using'} the new engine`);
+            return toastr.warning(t`Refresh the tab to use the new engine`);
+
+        if (!extensionSettings.experimentalEngine && isMathRegistered)
+            return toastr.warning(t`Refresh the tab to stop using the new engine`);
     }
 }
 
