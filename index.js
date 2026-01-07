@@ -291,6 +291,13 @@ eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
 
 // * MARK:New Macro Engine
 
+const regexVarName = /[a-zA-Z][\w]*[\w]/g;
+const excludedNames = [
+    'INVALID',
+    'and',
+    'or'
+];
+
 /**
  * @returns {null|number}
  */
@@ -383,8 +390,6 @@ function safeEvaluate(expr, scope = {}) {
     return { ok: true, value };
 }
 
-const regexVarName = /[a-zA-Z][\w]*[\w]/g;
-
 function loadExtensionMacros() {
     if (!extensionSettings.experimentalEngine) return;
 
@@ -409,6 +414,8 @@ function loadExtensionMacros() {
             const operationRaw = macroContext.args[0];
             const operation = operationRaw
                 .replaceAll(regexVarName, function (substring) {
+                    if (excludedNames.includes(substring)) return substring;
+
                     const localVar = getLocalVariable(substring);
                     const variable = String(localVar === '' ? getGlobalVariable(substring) : localVar);
                     const isVarNaN = isNaN(Number(variable));
