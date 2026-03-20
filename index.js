@@ -436,16 +436,16 @@ function loadExtensionMacros() {
                 })
                 .replaceAll(/\s/g, '');
 
-            log(macroContext);
-            log(operationRaw, operation);
-
             const mathEvaluation = safeEvaluate(operation);
 
             if (!mathEvaluation.ok) {
                 toastr.error('Mathcros: One of your math operations is using wrong syntax or a variable containing an invalid value');
+                log(operationRaw, operation);
                 error(mathEvaluation);
                 return operationRaw;
             }
+
+            log(operationRaw, operation, mathEvaluation.value);
 
             if (precision < 1) return Math.round(mathEvaluation.value);
 
