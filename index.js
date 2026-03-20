@@ -1,30 +1,59 @@
-import {extension_settings} from "../../../extensions.js";
-import {saveSettingsDebounced, event_types, eventSource} from "../../../../script.js";
-import {getLocalVariable, getGlobalVariable} from "../../../variables.js";
+import {MacroValueType} from "../../../macros/macro-system.js";
+import {math} from "./public/bundle.min.js";
 
-// * Extension variables
+// * MARK:Extension variables
+
+const context = () => SillyTavern.getContext();
+
+const {
+    macros,
+    variables,
+    extensionSettings: extension_settings,
+    eventTypes: event_types,
+    eventSource,
+    saveSettingsDebounced,
+    t
+} = context();
+
+const {
+    local: localVaraibles,
+    global: globalVariables
+} = variables;
+
+const {
+    get: getLocalVariable
+} = localVaraibles;
+
+const {
+    get: getGlobalVariable
+} = globalVariables;
 
 const extensionName = "SillyTavern-Mathcros";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 const extensionSettings = extension_settings[extensionName];
 const defaultSettings = {
     enabled: true,
+    experimentalEngine: false,
     debug: false
 };
 
-const context = SillyTavern.getContext();
 const regexSum = /{{sumvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 const regexMul = /{{mulvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 const regexMod = /{{modvar::((-?\w+)|(-?\d+(\.\d+)?))( ((-?\w+)|(-?\d+(\.\d+)?)))*}}/g;
 
-// * Debugs methods
+// * MARK:Debugs methods
 
 const log = (...msg) => {
     if (!extensionSettings.enabled || !extensionSettings.debug) return;
-    console.log("[" + extensionName + "]", ...msg);
+    console.log(`[${extensionName}-LOG]`, ...msg);
 };
 
-// * Extension methods
+const error = (...msg) => {
+    if (!extensionSettings.enabled || !extensionSettings.debug) return;
+    console.error(`[${extensionName}-ERROR]`, ...msg);
+};
+
+// * MARK:Extension methods
 
 /**
     @param {String} prompt - Raw prompt string
@@ -260,12 +289,189 @@ eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
         arg.prompt = runMacros(arg.prompt);
 });
 
-// * Methods in charge of controlling the extension settings
+// * MARK:New Macro Engine
+
+const regexVarName = /[a-zA-Z][\w]*[\w]/g;
+const excludedNames = [
+    'INVALID',
+    'and',
+    'or'
+];
+
+/**
+ * @returns {null|number}
+ */
+function chooseNeutral(parent, child) {
+    if (!parent) return null;
+    const type = parent.type;
+
+    if (type === 'OperatorNode') {
+        const op = parent.op;
+        const args = parent.args || [];
+
+        if (op === '+' || op === '-') return 0;
+        if (op === '*') return 1;
+
+        if (op === '/') {
+            if (args[1] === child) return 1;
+            return null;
+        }
+
+        if (op === '^') {
+            if (args[1] === child) return 1;
+            return null;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * @param {string} expr
+ * @param {Object} scope
+ * @returns {Object & {ok: boolean, value: number|Array}}
+ */
+function safeEvaluate(expr, scope = {}) {
+    const node = math.parse(expr);
+    const problems = [];
+
+    function tryNeutral(parent, n, path, reason) {
+        const neutral = chooseNeutral(parent, n);
+
+        if (neutral !== null) return math.parse(String(neutral));
+
+        problems.push({ node: n, reason, parentType: parent ? parent.type : null, path });
+        return null;
+    }
+
+    const transformed = node.transform(function (n, path, parent) {
+        if (n.isSymbolNode && n.name === 'INVALID') {
+            const replaced = tryNeutral(parent, n, path, 'explicit INVALID');
+            return replaced ?? n;
+        }
+
+        if (n.isSymbolNode) {
+            const name = n.name;
+            const replaced = tryNeutral(parent, n, path, `missing_or_invalid_symbol:${name}`);
+            return replaced ?? n;
+        }
+
+        if (n.isConstantNode) {
+            const val = n.value;
+
+            if (typeof val === 'number' && !isNaN(val)) return n;
+
+            if (typeof val === 'string') {
+                const t = val.trim();
+
+                if (t !== '' && !isNaN(Number(t))) return math.parse(String(Number(t)));
+
+                const replaced = tryNeutral(parent, n, path, 'string_not_numeric');
+                return replaced ?? n;
+            }
+
+            const isBoolOrNull = typeof val === 'boolean' || val === null;
+            const replaced = tryNeutral(parent, n, path, isBoolOrNull ? 'boolean_or_null' : 'unsupported_constant');
+            return replaced ?? n;
+        }
+
+        if (n.isArrayNode || n.isObjectNode) {
+            const replaced = tryNeutral(parent, n, path, n.isArrayNode ? 'array_literal' : 'object_literal');
+            return replaced ?? n;
+        }
+
+        return n;
+    });
+
+    if (problems.length) return { ok: false, problems };
+
+    const compiled = transformed.compile();
+    const value = compiled.evaluate(scope);
+    return { ok: true, value };
+}
+
+function loadExtensionMacros() {
+    if (!extensionSettings.experimentalEngine) return;
+
+    macros.register('math', {
+        description: 'Resolve mathematical operations using numbers and/or variables without modifying the value of the variable or using scripts.',
+        category: macros.category.UTILITY,
+        returnType: MacroValueType.NUMBER,
+        unnamedArgs: [{
+            name: 'operation',
+            description: 'The mathematical operation to resolve',
+            type: MacroValueType.STRING,
+            optional: false
+        }, {
+            name: 'precision',
+            description: 'Limits the max amount of decimal digits to show',
+            type: MacroValueType.INTEGER,
+            optional: true,
+            defaultValue: '0'
+        }],
+        handler: (macroContext) => {
+            const precision = Math.round(Number(macroContext.args[1] ?? 0));
+            const operationRaw = macroContext.args[0];
+            const operation = operationRaw
+                .replaceAll(regexVarName, function (substring) {
+                    if (excludedNames.includes(substring)) return substring;
+
+                    const localVar = getLocalVariable(substring);
+                    const variable = String(localVar === '' ? getGlobalVariable(substring) : localVar);
+                    const isVarNaN = isNaN(Number(variable));
+                    const isVarEmpty = variable.trim() === '';
+
+                    if (isVarEmpty) return 'INVALID';
+
+                    try {
+                        const parsedValue = JSON.parse(variable);
+                        if (Array.isArray(parsedValue)) return 'INVALID';
+                    } catch {
+                        // Nothing to do, isVarNaN will nuke it...
+                    }
+
+                    if (isVarNaN) return 'INVALID';
+
+                    return variable;
+                })
+                .replaceAll(/\s/g, '');
+
+            const mathEvaluation = safeEvaluate(operation);
+
+            if (!mathEvaluation.ok) {
+                toastr.error('Mathcros: One of your math operations is using wrong syntax or a variable containing an invalid value');
+                log(operationRaw, operation);
+                error(mathEvaluation);
+                return operationRaw;
+            }
+
+            log(operationRaw, operation, mathEvaluation.value);
+
+            if (precision < 1) return Math.round(mathEvaluation.value);
+
+            return math
+                .format(mathEvaluation.value, { notation: 'fixed', precision: precision })
+                .replace(/\.?0+$/,'');
+        },
+    });
+}
+
+// * MARK:Settings Controls
 
 const settingsCallbacks = {
     /**	Enables/Disables the extension */
     enabled: () => {
         // Nothing by the moment
+    },
+
+    experimentalEngine: () => {
+        const isMathRegistered = macros.registry.hasMacro('math');
+
+        if (extensionSettings.experimentalEngine && !isMathRegistered)
+            return toastr.warning(t`Refresh the tab to use the new engine`);
+
+        if (!extensionSettings.experimentalEngine && isMathRegistered)
+            return toastr.warning(t`Refresh the tab to stop using the new engine`);
     }
 }
 
@@ -287,6 +493,7 @@ function settingsBooleanButton(event) {
 /**	Logs setting's values. */
 function displaySettings() {
     console.debug("[" + extensionName + "]", `The extension is ${extensionSettings.enabled ? "active" : "not active"}`);
+    console.debug("[" + extensionName + "]", `Experimental engine mode is ${extensionSettings.experimentalEngine ? "active" : "not active"}`);
     console.debug("[" + extensionName + "]", `Debug mode is ${extensionSettings.debug ? "active" : "not active"}`);
     console.debug("[" + extensionName + "]", structuredClone(extensionSettings));
 }
@@ -298,16 +505,18 @@ async function loadHTMLSettings() {
     $("#extensions_settings").append(settingsHtml);
 
     // Event Listeners for the extension HTML
-    $("#mathcros-check-configuration").on("click", displaySettings);
-    $("#mathcros-activate-debug").on("input", settingsBooleanButton);
     $("#mathcros-activate-extension").on("input", settingsBooleanButton);
-
+    $("#mathcros-experimetal-engine").on("input", settingsBooleanButton);
+    $("#mathcros-activate-debug").on("input", settingsBooleanButton);
+    
+    $("#mathcros-check-configuration").on("click", displaySettings);
     log("loadHTMLSettings");
 }
 
 /** Init setting values on the menu */
 function setSettings() {
     $("#mathcros-activate-extension").prop("checked", extensionSettings.enabled).trigger("input");
+    $("#mathcros-experimetal-engine").prop("checked", extensionSettings.experimentalEngine).trigger("input");
     $("#mathcros-activate-debug").prop("checked", extensionSettings.debug).trigger("input");
 
     log("setSettings", extensionSettings);
@@ -315,18 +524,19 @@ function setSettings() {
 
 // * Initialize Extension
 
-(async function initExtension() {
+$(async function () {
 
-    if (!context.extensionSettings[extensionName]) {
-        context.extensionSettings[extensionName] = structuredClone(defaultSettings);
+    if (!context().extensionSettings[extensionName]) {
+        context().extensionSettings[extensionName] = structuredClone(defaultSettings);
     }
 
     for (const key of Object.keys(defaultSettings)) {
-        if (context.extensionSettings[extensionName][key] === undefined) {
-            context.extensionSettings[extensionName][key] = defaultSettings[key];
+        if (context().extensionSettings[extensionName][key] === undefined) {
+            context().extensionSettings[extensionName][key] = defaultSettings[key];
         }
     }
 
     await loadHTMLSettings();
+    loadExtensionMacros();
     setSettings();
-})();
+});
