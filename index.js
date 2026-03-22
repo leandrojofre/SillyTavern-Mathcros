@@ -445,12 +445,14 @@ function loadExtensionMacros() {
                 return operationRaw;
             }
 
-            log(operationRaw, operation, mathEvaluation.value);
+            const evaluationValue = Number(mathEvaluation.value);
 
-            if (precision < 1) return Math.round(mathEvaluation.value);
+            log({operationRaw, operation, evaluationValue});
+
+            if (precision < 1) return Math.round(evaluationValue);
 
             return math
-                .format(mathEvaluation.value, { notation: 'fixed', precision: precision })
+                .format(evaluationValue, { notation: 'fixed', precision: precision })
                 .replace(/\.?0+$/,'');
         },
     });
