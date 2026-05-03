@@ -409,10 +409,11 @@ function loadExtensionMacros() {
             optional: true,
             defaultValue: '0'
         }],
-        handler: (macroContext) => {
-            const precision = Math.round(Number(macroContext.args[1] ?? 0));
-            const operationRaw = macroContext.args[0];
-            const operation = operationRaw
+        handler: function ({args: [operationRaw, precisionRaw], resolve}) {
+            log({operationRaw, precisionRaw});
+
+            const precision = Math.round(Number(precisionRaw ?? 0));
+            const operation = (operationRaw || '')
                 .replaceAll(regexVarName, function (substring) {
                     if (excludedNames.includes(substring)) return substring;
 
@@ -436,24 +437,31 @@ function loadExtensionMacros() {
                 })
                 .replaceAll(/\s/g, '');
 
-            const mathEvaluation = safeEvaluate(operation);
+            try {
+                log({operation, precision});
 
-            if (!mathEvaluation.ok) {
-                toastr.error('Mathcros: One of your math operations is using wrong syntax or a variable containing an invalid value');
-                log(operationRaw, operation);
-                error(mathEvaluation);
-                return operationRaw;
+                const mathEvaluation = safeEvaluate(operation);
+
+                if (!mathEvaluation.ok) {
+                    toastr.error('Mathcros: One of your math operations is using wrong syntax or a variable containing an invalid value');
+                    log(operationRaw, operation);
+                    error(mathEvaluation);
+                    return operationRaw;
+                }
+
+                const evaluationValue = Number(mathEvaluation.value);
+
+                log({evaluationValue});
+
+                if (precision < 1) return Math.round(evaluationValue);
+
+                return math
+                    .format(evaluationValue, { notation: 'fixed', precision: precision })
+                    .replace(/\.?0+$/,'');
+            } catch (err) {
+                error({err, operation, precision});
+                return '';
             }
-
-            const evaluationValue = Number(mathEvaluation.value);
-
-            log({operationRaw, operation, evaluationValue});
-
-            if (precision < 1) return Math.round(evaluationValue);
-
-            return math
-                .format(evaluationValue, { notation: 'fixed', precision: precision })
-                .replace(/\.?0+$/,'');
         },
     });
 }
