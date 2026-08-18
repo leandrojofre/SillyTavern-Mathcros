@@ -349,7 +349,12 @@ const regexVarName = /[a-zA-Z][\w]*[\w]/g;
 const excludedNames = [
     'INVALID',
     'and',
-    'or'
+    'or',
+    'not',
+    'xor',
+    'pi',
+    'sqrt',
+    'random',
 ];
 
 /**
@@ -395,19 +400,20 @@ function safeEvaluate(expr, scope = {}) {
         if (neutral !== null) return math.parse(String(neutral));
 
         problems.push({ node: n, reason, parentType: parent ? parent.type : null, path });
+
         return null;
     }
 
     const transformed = node.transform(function (n, path, parent) {
-        if (n.isSymbolNode && n.name === 'INVALID') {
-            const replaced = tryNeutral(parent, n, path, 'explicit INVALID');
-            return replaced ?? n;
-        }
-
         if (n.isSymbolNode) {
             const name = n.name;
-            const replaced = tryNeutral(parent, n, path, `missing_or_invalid_symbol:${name}`);
-            return replaced ?? n;
+            const isInvalid = name === 'INVALID';
+            const isFunction = !isInvalid && parent?.type === 'FunctionNode' && parent.fn === n;
+            let result = n;
+
+            if (isInvalid) result = tryNeutral(parent, n, path, 'explicit INVALID');
+            if (!isFunction) result = tryNeutral(parent, n, path, `missing_or_invalid_symbol:${name}`);
+            return result ?? n;
         }
 
         if (n.isConstantNode) {
@@ -441,6 +447,7 @@ function safeEvaluate(expr, scope = {}) {
 
     const compiled = transformed.compile();
     const value = compiled.evaluate(scope);
+
     return { ok: true, value };
 }
 
@@ -520,6 +527,12 @@ function loadExtensionMacros() {
     });
 }
 
+// * MARK:Interface
+
+globalThis.Mathcros = {
+    math,
+};
+
 // * MARK:Settings Controls
 
 const settingsCallbacks = {
@@ -568,12 +581,12 @@ async function loadHTMLSettings() {
 
     $("#extensions_settings").append(settingsHtml);
 
-    // Event Listeners for the extension HTML
     $("#mathcros-activate-extension").on("input", settingsBooleanButton);
     $("#mathcros-experimetal-engine").on("input", settingsBooleanButton);
     $("#mathcros-activate-debug").on("input", settingsBooleanButton);
 
     $("#mathcros-check-configuration").on("click", displaySettings);
+
     log("loadHTMLSettings");
 }
 
