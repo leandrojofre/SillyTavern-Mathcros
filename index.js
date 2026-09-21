@@ -345,7 +345,7 @@ eventSource.on(event_types.GENERATE_AFTER_DATA, (arg) => {
 
 // * MARK:New Macro Engine
 
-const regexVarName = /[a-zA-Z][\w]*[\w]/g;
+const regexVarName = /[a-zA-Z_][\w]*[\w]/g;
 const excludedNames = [
     'INVALID',
     'and',
